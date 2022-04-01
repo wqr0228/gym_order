@@ -10,8 +10,6 @@ from getpass import getpass
 import time
 import datetime
 
-login_url = 'https://elife.fudan.edu.cn/login.jsp'
-logout_url = 'https://elife.fudan.edu.cn/logout.jsp'
 order_times = ['08:00', '11:00', '12:00', '19:00', '20:00', '21:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次，顺序很重要
 max_order_num = 2
 skip_days = 1
