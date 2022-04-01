@@ -12,7 +12,7 @@ import datetime
 
 order_times = ['08:00', '11:00', '12:00', '19:00', '20:00', '21:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次，顺序很重要
 max_order_num = 2
-skip_days = 1
+skip_days = 2
 # 开始执行时间， 是否等待
 start_time = '07:00:15'
 wait_until_start_time = True
