@@ -9,14 +9,18 @@ from os import path as os_path, getenv
 from getpass import getpass
 import time
 import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 
-order_times = ['21:00', '20:00', '08:00', '11:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次，顺序很重要
-max_order_num = 2
-skip_days = 2
-# 开始执行时间， 是否等待
-start_time = '07:00:15'
-wait_until_start_time = True
-
+#*******************预约条件*******************
+order_times = ['21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次，顺序很重要
+max_order_num = 2 # 每天最多预约场次数
+skip_days = 2 # 预约日期距离今天的天数
+start_time = '07:00:15' # 开始执行时间
+wait_until_start_time = True # 是否等待开始时间(调试用)
+send_email = True # 预约成功是否发邮件提醒
+#**********************************************
 
 class Elife():
     '''
@@ -47,8 +51,7 @@ class Elife():
         print("◉ Initiating——", end='')
         page_login = self.session.get(self.url_login)
 
-        print("return status code",
-              page_login.status_code)
+        print("return status code", page_login.status_code)
 
         if page_login.status_code == 200:
             print("◉ Initiated——", end="")
@@ -84,23 +87,18 @@ class Elife():
             "Referer": self.url_login,
             "User-Agent": self.UA
         }
-
         print("◉ Login ing——", end="")
         post = self.session.post(
             self.url_login,
             data=data,
             headers=headers,
             allow_redirects=False)
+
         url_redirect = post.url
 
         print("return status code", post.status_code)
 
-        get = self.session.get(
-            url_redirect
-        )
-        # print(get.status_code)
-        # print(get.url)
-        # print(self.session.cookies.items())
+        get = self.session.get(url_redirect)
 
         if get.status_code == 200:
             print("\n***********************"
@@ -149,23 +147,24 @@ class Elife():
                 time.sleep(0.5)
                 cnt += 1
                 if cnt % 10 == 0:
-                    print('等待资源开放时间...')  # 每隔5秒打印一次
+                    print('等待资源开放时间...')  # 5秒打印一次
 
         date = (datetime.date.today() + datetime.timedelta(days=skip_days)).strftime("%Y-%m-%d")
-        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' #江湾体育馆羽毛球场
-        url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
+        # contentIframe url
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
+        url_court = 'https://elife.fudan.edu.cn/public/front/toResourceFrame.htm?contentId=8aecc6ce7641d43101764ac0e3c1524d&ordersId=&currentDate='  # 张江校区食堂三楼羽毛球（非标）
         url_date = url_court + date
         success_times = 0
         for i, str in enumerate(order_times):
-            for j in range(2):  # 为了防止预约失败，每个时段都尝试两次
+            for j in range(2):   # 为了防止预约失败，每个时段都尝试两次
                 print("\n◉ 第{}次尝试 时段：{}".format(i+1, str))
                 success_flag = self._order_once(url_date, str)
                 if success_flag:
                     success_times += 1
-                    break   # 第一次预约成功则跳过第二次，直接进入下个时段预约
+                    break       # 第一次预约成功则跳过第二次，直接进入下个时段预约
             if success_times >= max_order_num:
                 break
-
         print('\n全部预约完成！')
 
     def _order_once(self, url, time_str):
@@ -175,7 +174,7 @@ class Elife():
         page_date = self.session.get(url)  # 要预约的当天场次选择页面
         page_date_html = etree.HTML(page_date.text)
         order_btn_list = page_date_html.xpath('//tr[td/font/text()="{}"]/td/img/@onclick'.format(time_str))
-        # 是一个预约时间的按钮onclick属性list，形如["checkUser('8aecc6ce7fb5f264017fbedaf2ac7d87',this)"]，若该时间段能预约则应该有onclick属性，若按钮为灰则无onclick属性
+        # 是一个预约时间的按钮onclick属性list，形如["checkUser('8aecc6ce7fb5f264017fbedaf2ac7d87',this)"]，若该时间段能预约则有onclick属性，若按钮为灰则无onclick属性
         if len(order_btn_list) == 0:  # 没有onclick属性，说明该时间段不能预约
             print('当前时段不可预约！')
             return False
@@ -197,6 +196,11 @@ class Elife():
         page_order = self.session.get('https://elife.fudan.edu.cn/public/front/loadOrderForm_ordinary.htm', params=params)  # 获取预定页面
         page_order_html = etree.HTML(page_order.text)
         order_user = page_order_html.xpath('//*[@id="order_user"]/@value')[0]  # 用户名
+        # 要发送的信息
+        court_name = page_order_html.xpath('//*[@class="ddqr"]/text()')[0][6:]  # 场地名称
+        order_date = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/text()')[0]  # 日期 星期几
+        order_time = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/span/text()')[0].replace('\r\n', '').replace('\t', '')  # 时间段
+
         code = self._read_captcha()
         print('验证码：', code)
 
@@ -214,9 +218,12 @@ class Elife():
                  'mobile': (None, self.mobile),
                  'imageCodeName': (None, code),
                  'd_cgyy.bz': (None, '')}
-        order_result = self.session.post('https://elife.fudan.edu.cn/public/front/saveOrder.htm?op=order', files=files, allow_redirects=True)  # 如果预约成功会自动重定向到操作成功页面
-        if order_result.url.find('%E6%93%8D%E4%BD%9C%E6%88%90%E5%8A%9F') >= 0:  # url编码中含有“操作成功”，即表示预约成功，否则打印失败信息
+        order_result = self.session.post('https://elife.fudan.edu.cn/public/front/saveOrder.htm?op=order', files=files, allow_redirects=True)  # 预约成功会自动重定向到操作成功页面
+        if order_result.url.find('%E6%93%8D%E4%BD%9C%E6%88%90%E5%8A%9F') >= 0:  # url编码中含有“操作成功”，表示预约成功
             print('预约成功！')
+            if send_email:
+                mail = Mail(court_name, order_date, order_time, order_user)
+                mail.send()
             return True
         else:
             print('预约失败！')
@@ -239,6 +246,40 @@ class Elife():
                 print('验证码识别错误，重试...')
         return result[0][1]
 
+# 发送邮件提醒
+
+
+class Mail:
+    def __init__(self, court_name, order_date, order_time, order_user):
+
+        days = ['一', '二', '三', '四', '五', '六', '日']
+        self.mail_host = "smtp.qq.com"  # qq邮箱服务器
+        self.mail_pass = "kshwghsboixkdibb"  # 授权码
+        self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
+        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
+        # if self.user == 'nqx':
+        #     self.receivers.append(email['cyt'])
+        self.court_name = court_name
+        self.order_date = order_date
+        self.order_time = order_time
+        self.order_user = order_user
+
+    def send(self):
+        content = '场地预约成功！\n类别：{}\n时间：{} {}\n用户：{}'.format(self.court_name, self.order_date, self.order_time, self.order_user)
+        message = MIMEText(content, 'plain', 'utf-8')
+        message['From'] = Header("场馆预约提醒", 'utf-8')
+        message['To'] = Header("User", 'utf-8')
+        subject = '场馆预约'  # 发送的主题
+        message['Subject'] = Header(subject, 'utf-8')
+        try:
+            smtpObj = smtplib.SMTP_SSL(self.mail_host, 465)
+            smtpObj.login(self.sender, self.mail_pass)
+            smtpObj.sendmail(self.sender, self.receivers, message.as_string())
+            smtpObj.quit()
+            print('邮件已发送!')
+        except smtplib.SMTPException as e:
+            print('邮件发送失败!')
+
 
 def get_account():
     """
@@ -250,9 +291,8 @@ def get_account():
     if uid != None and psw != None:
         print("从环境变量中获取了用户名和密码！")
         return uid, psw, mobile
-    print("\n\n请仔细阅读以下日志！！！！！！\n\n")
     if os_path.exists("account.txt"):
-        print("读取账号中……")
+        print("\n读取账号中……")
         with open("account.txt", "r") as old:
             raw = old.readlines()
         if (raw[0][:3] != "uid") or (len(raw[0]) < 10):
@@ -263,7 +303,7 @@ def get_account():
         mobile = (raw[2].split(":"))[1].strip()
 
     else:
-        print("未找到account.txt, 判断为首次运行, 请接下来依次输入学号、密码、电话")
+        print("\n未找到account.txt, 判断为首次运行, 请接下来依次输入学号、密码、电话")
         uid = input("学号：")
         psw = getpass("密码：")
         mobile = input("电话：")
