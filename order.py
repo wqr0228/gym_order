@@ -151,8 +151,8 @@ class Elife():
             while datetime.datetime.now().strftime("%H:%M:%S") < start_time:
                 time.sleep(0.5)
                 cnt += 1
-                if cnt % 10 == 0:
-                    print('等待资源开放时间...')  # 5秒打印一次
+                if cnt % 20 == 0:
+                    print('等待资源开放时间...')  # 10秒打印一次
 
         date = (datetime.date.today() + datetime.timedelta(days=skip_days)).strftime("%Y-%m-%d")
         # contentIframe url
