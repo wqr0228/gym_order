@@ -262,8 +262,6 @@ class Mail:
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
         self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
-        # if self.user == 'nqx':
-        #     self.receivers.append(email['cyt'])
         self.court_name = court_name
         self.order_date = order_date
         self.order_time = order_time
