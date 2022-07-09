@@ -11,7 +11,7 @@
   （参考[这里](https://github.com/ZiYang-xie/pafd-automated/tree/master/docs)）
 3. 默认情况下，脚本会通过.github/workflows/main.yml的cron表达式中配置的时间每天自动运行（规则参考[这里](https://docs.github.com/cn/enterprise-server@2.22/actions/learn-github-actions/events-that-trigger-workflows#scheduled-events) ）例如学校场馆每日早7：00开放预约，需要设置脚本每天6:57运行一次。
    
-   但是经过实测，Github Actions的schedule并不是很准确，可能会相差数分钟到数小时才会运行脚本，导致预约失败（已经被抢没了）。
+   但是经过实测，Github Actions的schedule**并不是很准确**，可能会相差数分钟到数小时才会运行脚本，导致预约失败（已经被抢没了）。
    
    因此要想定时启动的话需要更换一下定时启动脚本的方式，通过workflow_dispatch触发器来触发workflow的执行。简单来说，就是通过外面的服务器每天定时post一条链接，Github Actions收到这条请求后就会立刻执行workflow。
    
