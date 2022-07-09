@@ -17,6 +17,7 @@
    这里步骤有点繁琐，需要一台能联网的服务器或者其他第三方cron服务（如腾讯云函数等）设置每天定时post一条链接（形如 https://api.github.com/repos/nqx12348/Badminton/actions/workflows/main.yml/dispatches）
    
    具体的github和云函数配置过程可以参考[这里](https://blog.csdn.net/l1937gzjlzy/article/details/117753465)
+   
    腾讯云函数每天post一条链接是免费的，但是根据[这条通知](https://console.cloud.tencent.com/message/detail/1067391159)该功能三个月后就会收费，到时可以找类似产品替代吧。
    
    
