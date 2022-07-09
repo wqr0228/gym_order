@@ -19,7 +19,7 @@
    
    具体的github和云函数配置过程可以参考[这里](https://blog.csdn.net/l1937gzjlzy/article/details/117753465)
    
-   腾讯云函数每天post一条链接是免费的，但是根据[这条通知](https://console.cloud.tencent.com/message/detail/1067391159)该功能三个月后就会收费，到时可以找类似产品替代吧。
+   腾讯云函数每天post一条链接是免费的，但是根据[这条通知](https://console.cloud.tencent.com/message/detail/1067391159)该功能三个月后就会收费，到时可以找类似产品替代。
    
    
 点击Actions->Run workflow可以立即执行一次预约，通过输出查看脚本是否能够正常运行
