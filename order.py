@@ -158,7 +158,9 @@ class Elife():
         # contentIframe url
         # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
         # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce7176eb18017225bfcd292809&ordersId=&currentDate=' # 江湾体育馆网球场
         url_court = 'https://elife.fudan.edu.cn/public/front/toResourceFrame.htm?contentId=8aecc6ce7641d43101764ac0e3c1524d&ordersId=&currentDate='  # 张江校区食堂三楼羽毛球（非标）
+        
         url_date = url_court + date
         success_times = 0
         for i, str in enumerate(order_times):
