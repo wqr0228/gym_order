@@ -20,7 +20,7 @@ max_order_num = 2 # 每天最多预约场次数 1~3
 skip_days = 2 # 预约日期距离今天的天数 0~2
 start_time = '07:00:15' # 开始执行时间
 wait_until_start_time = True # 是否等待开始时间(for testing)
-send_email = True # 预约成功发邮件提醒
+send_email = True # 预约成功是否发邮件提醒
 #**********************************************
 
 class Elife():
