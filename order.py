@@ -263,7 +263,7 @@ class Mail:
         self.mail_host = "smtp.qq.com"  # qq邮箱服务器
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
-        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
+        self.receivers = ['2858749799@qq.com']  # 收件人的邮箱地址
         self.court_name = court_name
         self.order_date = order_date
         self.order_time = order_time
