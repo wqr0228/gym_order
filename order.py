@@ -1,6 +1,7 @@
 import requests
 import easyocr
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageEnhance
 from io import BytesIO
 import re
 from sys import exit as sys_exit
@@ -12,13 +13,14 @@ import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
+from multiprocessing import Pool
 import os
 
 #*******************预约条件*******************
-order_times = ['21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00','12:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
+order_times = ['14:00', '13:00', '12:00', '21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
 max_order_num = 2 # 每天最多预约场次数 1~3
 skip_days = 2 # 预约日期距离今天的天数 0~2
-start_time = '07:00:15' # 开始执行时间
+start_time = '07:00:05' # 开始执行时间
 wait_until_start_time = True # 是否等待开始时间(for testing)
 send_email = True # 预约成功是否发邮件提醒
 #**********************************************
@@ -142,7 +144,7 @@ class Elife():
               "\n***********************")
         
         os.environ['TZ'] = 'Asia/Shanghai'
-        time.tzset()
+        # time.tzset()
         print(datetime.datetime.now().strftime("%H:%M:%S"))
         
         # 等待开放时间
@@ -155,6 +157,7 @@ class Elife():
                     print('等待资源开放时间...')  # 10秒打印一次
 
         date = (datetime.date.today() + datetime.timedelta(days=skip_days)).strftime("%Y-%m-%d")
+        print('目标日期：{}'.format(date))
         # contentIframe url
         # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
         # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
@@ -165,7 +168,8 @@ class Elife():
         success_times = 0
         for i, str in enumerate(order_times):
             for j in range(2):   # 为了防止预约失败，每个时段都尝试两次
-                print("\n◉ 第{}次尝试 时段：{}".format(i+1, str))
+                current_time = datetime.datetime.now().strftime("%H:%M:%S")
+                print("\n◉ {} 第{}次尝试 时段：{}".format(current_time, i+1, str))
                 success_flag = self._order_once(url_date, str)
                 if success_flag:
                     success_times += 1
@@ -201,30 +205,36 @@ class Elife():
             'orderCounts': 1
         }
         page_order = self.session.get('https://elife.fudan.edu.cn/public/front/loadOrderForm_ordinary.htm', params=params)  # 获取预定页面
-        page_order_html = etree.HTML(page_order.text)
-        order_user = page_order_html.xpath('//*[@id="order_user"]/@value')[0]  # 用户名
-        # 要发送的信息
-        court_name = page_order_html.xpath('//*[@class="ddqr"]/text()')[0][6:]  # 场地名称
-        order_date = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/text()')[0]  # 日期 星期几
-        order_time = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/span/text()')[0].replace('\r\n', '').replace('\t', '')  # 时间段
+        try:
+            page_order_html = etree.HTML(page_order.text)
+            order_user = page_order_html.xpath('//*[@id="order_user"]/@value')[0]  # 用户名
+            # 要发送的信息
+            court_name = page_order_html.xpath('//*[@class="ddqr"]/text()')[0][6:]  # 场地名称
+            order_date = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/text()')[0]  # 日期 星期几
+            order_time = page_order_html.xpath('//*[@class="txdd_table_2"]/tr[3]/td/p/span/text()')[0].replace('\r\n', '').replace('\t', '')  # 时间段
+        except Exception as e:
+            print(repr(e))
+            print(page_order.text)
+            print('Exception while loading order page. Retry...')
+            return False
 
         code = self._read_captcha()
         print('验证码：', code)
 
         self.session.headers.update({'referer': url})
         files = {'serviceContent.id': (None, service_content_id),
-                 'serviceCategory.id':  (None, service_category_id),
-                 'contentChild': (None, ''),
-                 'codeStr': (None, code_str),
-                 'itemsPrice': (None, ''),
-                 'acceptPrice': (None, ''),
-                 'orderuser': (None, order_user),
-                 'resourceIds': (None, resource_ids),
-                 'orderCounts': (None, 1),
-                 'lastDays': (None, 0),
-                 'mobile': (None, self.mobile),
-                 'imageCodeName': (None, code),
-                 'd_cgyy.bz': (None, '')}
+                'serviceCategory.id':  (None, service_category_id),
+                'contentChild': (None, ''),
+                'codeStr': (None, code_str),
+                'itemsPrice': (None, ''),
+                'acceptPrice': (None, ''),
+                'orderuser': (None, order_user),
+                'resourceIds': (None, resource_ids),
+                'orderCounts': (None, 1),
+                'lastDays': (None, 0),
+                'mobile': (None, self.mobile),
+                'imageCodeName': (None, code),
+                'd_cgyy.bz': (None, '')}
         order_result = self.session.post('https://elife.fudan.edu.cn/public/front/saveOrder.htm?op=order', files=files, allow_redirects=True)  # 预约成功会自动重定向到操作成功页面
         if order_result.url.find('%E6%93%8D%E4%BD%9C%E6%88%90%E5%8A%9F') >= 0:  # url编码中含有“操作成功”，表示预约成功
             print('预约成功！')
@@ -243,10 +253,17 @@ class Elife():
         读取验证码，如果错误则重新获取，直到成功识别出4个数字的验证码
         '''
         while True:  # 验证码识别为空或者不是4个字符，则重试
-            img_code = Image.open(BytesIO(self.session.get(self.url_code).content))
+            img_code = Image.open(BytesIO(self.session.get(self.url_code).content)).convert('L')
             # img_code.show()
+
+            enh_bri = ImageEnhance.Brightness(img_code)
+            img_code_enhanced = enh_bri.enhance(factor=1.5)
+            # img_code_enhanced.show()
+
+            img_code_numpy = np.array(img_code_enhanced)
+
             reader = easyocr.Reader(['en'], gpu=False, verbose=False)
-            result = reader.readtext(img_code)
+            result = reader.readtext(img_code_numpy)
             if len(result) > 0 and len(result[0][1].replace(' ', '')) == 4:
                 break
             else:
@@ -263,7 +280,7 @@ class Mail:
         self.mail_host = "smtp.qq.com"  # qq邮箱服务器
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
-        self.receivers = ['2858749799@qq.com']  # 收件人的邮箱地址
+        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
         self.court_name = court_name
         self.order_date = order_date
         self.order_time = order_time
