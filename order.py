@@ -144,7 +144,7 @@ class Elife():
               "\n***********************")
         
         os.environ['TZ'] = 'Asia/Shanghai'
-        # time.tzset()
+        time.tzset()
         print(datetime.datetime.now().strftime("%H:%M:%S"))
         
         # 等待开放时间
