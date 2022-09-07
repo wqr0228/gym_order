@@ -17,7 +17,7 @@ from multiprocessing import Pool
 import os
 
 #*******************预约条件*******************
-order_times = ['14:00', '13:00', '12:00', '21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
+order_times = ['21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
 max_order_num = 2 # 每天最多预约场次数 1~3
 skip_days = 2 # 预约日期距离今天的天数 0~2
 start_time = '07:00:05' # 开始执行时间
@@ -280,7 +280,7 @@ class Mail:
         self.mail_host = "smtp.qq.com"  # qq邮箱服务器
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
-        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
+        self.receivers = ['2858749799@qq.com']  # 收件人的邮箱地址
         self.court_name = court_name
         self.order_date = order_date
         self.order_time = order_time
