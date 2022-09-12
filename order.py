@@ -15,6 +15,8 @@ from email.mime.text import MIMEText
 from email.header import Header
 from multiprocessing import Pool, Manager
 import os
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 #*******************预约条件*******************
 order_times = ['21:00', '20:00', '19:00', '18:00', '14:00', '12:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
