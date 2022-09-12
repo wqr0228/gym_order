@@ -13,14 +13,14 @@ import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
 import os
 
 #*******************预约条件*******************
 order_times = ['21:00', '20:00', '19:00', '18:00', '14:00', '10:00', '08:00']  # 想要预约的时间段 会[按照顺序]依次尝试预约每个时间段的场次
 max_order_num = 2 # 每天最多预约场次数 1~3
 skip_days = 2 # 预约日期距离今天的天数 0~2
-start_time = '07:00:05' # 开始执行时间
+start_time = '07:00:00' # 开始执行时间
 wait_until_start_time = True # 是否等待开始时间(for testing)
 send_email = True # 预约成功是否发邮件提醒
 #**********************************************
@@ -144,9 +144,31 @@ class Elife():
               "\n***********************")
         
         os.environ['TZ'] = 'Asia/Shanghai'
-        time.tzset()
+        # time.tzset()
         print(datetime.datetime.now().strftime("%H:%M:%S"))
-        
+
+        date = (datetime.date.today() + datetime.timedelta(days=skip_days)).strftime("%Y-%m-%d")
+        print('目标日期：{}'.format(date))
+        n_ordered = self.get_n_ordered()
+        n_avail = 3 - n_ordered
+        print('用户已经预约了{}个场次，还剩{}个场次可约.'.format(n_ordered, n_avail))
+        if n_avail == 0:
+            return
+
+        # contentIframe url
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
+        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce7176eb18017225bfcd292809&ordersId=&currentDate=' # 江湾体育馆网球场
+        url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
+        url_date = url_court + date
+
+        manager = Manager()
+        lock = manager.Lock()
+        success_times = manager.Value('d', 0)
+
+        pool = Pool(2)
+        params_lst = [(url_date, time_str, lock, success_times) for time_str in order_times]
+
         # 等待开放时间
         if wait_until_start_time:
             cnt = 0
@@ -156,39 +178,54 @@ class Elife():
                 if cnt % 20 == 0:
                     print('等待资源开放时间...')  # 10秒打印一次
 
-        date = (datetime.date.today() + datetime.timedelta(days=skip_days)).strftime("%Y-%m-%d")
-        print('目标日期：{}'.format(date))
-        # contentIframe url
-        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
-        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=2c9c486e4f821a19014f82418a900004&ordersId=&currentDate='  # 正大体育馆羽毛球场
-        # url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce7176eb18017225bfcd292809&ordersId=&currentDate=' # 江湾体育馆网球场
-        url_court = 'https://elife.fudan.edu.cn/public/front/getResource2.htm?contentId=8aecc6ce749544fd01749a31a04332c2&ordersId=&currentDate=' # 江湾体育馆羽毛球场
-        
-        url_date = url_court + date
-        success_times = 0
-        for i, str in enumerate(order_times):
-            for j in range(2):   # 为了防止预约失败，每个时段都尝试两次
-                current_time = datetime.datetime.now().strftime("%H:%M:%S")
-                print("\n◉ {} 第{}次尝试 时段：{}".format(current_time, i+1, str))
-                success_flag = self._order_once(url_date, str)
-                if success_flag:
-                    success_times += 1
-                    break       # 第一次预约成功则跳过第二次，直接进入下个时段预约
-            if success_times >= max_order_num:
-                break
-        print('\n全部预约完成！')
+        if n_avail == 1: # 只有1个位置时顺序约，防止没有按照想要的顺序
+            result_lst = []
+            for time_str in order_times:
+                result = self._order_once(url_date, time_str, lock, success_times)
+                result_lst.append(result)
 
-    def _order_once(self, url, time_str):
+        elif n_avail >= 2: # 有两个以上位置时多进程约
+            result = pool.starmap_async(self._order_once, params_lst)
+            result_lst = result.get()  # [None, None, None, None, None, ('江湾体育馆羽毛球场', '2022-09-13 星期二 ', '13:00 至14:00', '王淇锐'), ('江湾体育馆羽毛球场', '2022-09-13 星期二 ', '12:00 至13:00', '王淇锐'), None, None, None]
+
+        pool.close()
+        pool.join()
+   
+        if send_email and success_times.value > 0:
+            mail = Mail(result_lst)
+            mail.send()
+        print('\n今日预约完成，共预约了{}次.'.format(success_times.value))
+
+    def get_n_ordered(self):
         '''
-        执行一次预约
+        获取账号上已经预约的场次数目
         '''
+        page_order_state = self.session.get('https://elife.fudan.edu.cn/public/userbox/index.htm?userConfirm=&orderstateselect=') # 已预约场次的页面
+        page_order_state_html = etree.HTML(page_order_state.text)
+        ordered_list = page_order_state_html.xpath('//td[contains(text(),"待签到")]')  # xpath contains
+        n_ordered = len(ordered_list) if ordered_list else 0 # []返回0
+
+        return n_ordered
+
+    def _order_once(self, url, time_str, lock, success_times):
+        '''
+        执行一次预约，并在一行内打印结果
+        成功返回True，失败返回False
+        lock: 进程锁，将请求/读取验证码与预约绑定
+        success_times: 共享变量，用于控制最大预约场次
+        return: 成功返回表示预约信息的元组，失败返回None
+        '''
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        message = '\n◉ {} 目标时段：{}  '.format(current_time, time_str)
+
         page_date = self.session.get(url)  # 要预约的当天场次选择页面
         page_date_html = etree.HTML(page_date.text)
         order_btn_list = page_date_html.xpath('//tr[td/font/text()="{}"]/td/img/@onclick'.format(time_str))
         # 是一个预约时间的按钮onclick属性list，形如["checkUser('8aecc6ce7fb5f264017fbedaf2ac7d87',this)"]，若该时间段能预约则有onclick属性，若按钮为灰则无onclick属性
         if len(order_btn_list) == 0:  # 没有onclick属性，说明该时间段不能预约
-            print('当前时段不可预约！')
-            return False
+            message += '当前时段不可预约！'
+            print(message, flush=True)
+            return None
 
         resource_ids = order_btn_list[0][11:-7]
         service_content_id = page_date_html.xpath('//input[@name="serviceContent.id"]/@value')[0]  # ['2c9c486e4f821a19014f82418a900004']
@@ -216,37 +253,47 @@ class Elife():
             print(repr(e))
             print(page_order.text)
             print('Exception while loading order page. Retry...')
-            return False
+            return None
 
-        code = self._read_captcha()
-        print('验证码：', code)
-
-        self.session.headers.update({'referer': url})
-        files = {'serviceContent.id': (None, service_content_id),
-                'serviceCategory.id':  (None, service_category_id),
-                'contentChild': (None, ''),
-                'codeStr': (None, code_str),
-                'itemsPrice': (None, ''),
-                'acceptPrice': (None, ''),
-                'orderuser': (None, order_user),
-                'resourceIds': (None, resource_ids),
-                'orderCounts': (None, 1),
-                'lastDays': (None, 0),
-                'mobile': (None, self.mobile),
-                'imageCodeName': (None, code),
-                'd_cgyy.bz': (None, '')}
-        order_result = self.session.post('https://elife.fudan.edu.cn/public/front/saveOrder.htm?op=order', files=files, allow_redirects=True)  # 预约成功会自动重定向到操作成功页面
-        if order_result.url.find('%E6%93%8D%E4%BD%9C%E6%88%90%E5%8A%9F') >= 0:  # url编码中含有“操作成功”，表示预约成功
-            print('预约成功！')
-            if send_email:
-                mail = Mail(court_name, order_date, order_time, order_user)
-                mail.send()
-            return True
+        lock.acquire() # 创建锁，将请求、读取验证码与约场请求绑定，以防止并行的进程同时请求验证码导致预约失败
+        if success_times.value >= max_order_num:
+            message += '已达到设置的当天最大预约次数！'
+            print(message, flush=True)
+            result = None
         else:
-            print('预约失败！')
-            print('URL:', order_result.url)
-            # print(order_result.text)
-            return False
+            code = self._read_captcha()
+            message +='验证码：{} '.format(code)
+
+            self.session.headers.update({'referer': url})
+            files = {'serviceContent.id': (None, service_content_id),
+                    'serviceCategory.id':  (None, service_category_id),
+                    'contentChild': (None, ''),
+                    'codeStr': (None, code_str),
+                    'itemsPrice': (None, ''),
+                    'acceptPrice': (None, ''),
+                    'orderuser': (None, order_user),
+                    'resourceIds': (None, resource_ids),
+                    'orderCounts': (None, 1),
+                    'lastDays': (None, 0),
+                    'mobile': (None, self.mobile),
+                    'imageCodeName': (None, code),
+                    'd_cgyy.bz': (None, '')}
+            order_result = self.session.post('https://elife.fudan.edu.cn/public/front/saveOrder.htm?op=order', files=files, allow_redirects=True)  # 预约成功会自动重定向到操作成功页面
+
+            if order_result.url.find('%E6%93%8D%E4%BD%9C%E6%88%90%E5%8A%9F') >= 0:  # url编码中含有“操作成功”，表示预约成功
+                success_times.value += 1
+                message += '预约成功！'
+                print(message, flush=True)
+                result = (court_name, order_date, order_time, order_user)
+            else:
+                message += '预约失败！'
+                # message += 'URL:{}'.format(order_result.url)
+                print(order_result.text, flush=True)
+                print(message, flush=True)
+                result = None
+
+        lock.release() # 释放锁
+        return result
 
     def _read_captcha(self):
         '''
@@ -274,20 +321,27 @@ class Elife():
 
 
 class Mail:
-    def __init__(self, court_name, order_date, order_time, order_user):
-
+    def __init__(self, result_lst):
+        '''
+        result_lst: 表示本日预约结果的列表 
+        '''
+        result_lst = [r for r in result_lst if r is not None]
+        # court_name, order_date, order_time, order_user
         days = ['一', '二', '三', '四', '五', '六', '日']
         self.mail_host = "smtp.qq.com"  # qq邮箱服务器
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
-        self.receivers = ['2858749799@qq.com']  # 收件人的邮箱地址
-        self.court_name = court_name
-        self.order_date = order_date
-        self.order_time = order_time
-        self.order_user = order_user
+        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
+        self.court_name = result_lst[0][0]
+        self.order_date = result_lst[0][1]
+        self.order_times = ''
+        times = [r[2] for r in result_lst]
+        for t in times:
+            self.order_times += '{}  '.format(t)
+        self.order_user = result_lst[0][3]
 
     def send(self):
-        content = '场地预约成功！\n类别：{}\n时间：{} {}\n用户：{}'.format(self.court_name, self.order_date, self.order_time, self.order_user)
+        content = '场地预约成功！\n类别：{}\n时间：{} {}\n用户：{}'.format(self.court_name, self.order_date, self.order_times, self.order_user)
         message = MIMEText(content, 'plain', 'utf-8')
         message['From'] = Header("场馆预约提醒", 'utf-8')
         message['To'] = Header("User", 'utf-8')
@@ -300,6 +354,7 @@ class Mail:
             smtpObj.quit()
             print('邮件已发送!')
         except smtplib.SMTPException as e:
+            pass
             print('邮件发送失败!')
 
 
