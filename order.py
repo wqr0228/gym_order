@@ -333,7 +333,7 @@ class Mail:
         self.mail_host = "smtp.qq.com"  # qq邮箱服务器
         self.mail_pass = "kshwghsboixkdibb"  # 授权码
         self.sender = 'niequanxin@qq.com'  # 发送方邮箱地址
-        self.receivers = ['niequanxin@qq.com']  # 收件人的邮箱地址
+        self.receivers = ['2858749799@qq.com']  # 收件人的邮箱地址
         self.court_name = result_lst[0][0]
         self.order_date = result_lst[0][1]
         self.order_times = ''
@@ -354,10 +354,10 @@ class Mail:
             smtpObj.login(self.sender, self.mail_pass)
             smtpObj.sendmail(self.sender, self.receivers, message.as_string())
             smtpObj.quit()
-            print('邮件已发送!')
+            print('\n邮件已发送!')
         except smtplib.SMTPException as e:
             pass
-            print('邮件发送失败!')
+            print('\n邮件发送失败!')
 
 
 def get_account():
